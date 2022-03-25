@@ -1,3 +1,4 @@
+use cargo_toml::Manifest;
 use hyper::{Client, body::{Buf, to_bytes}};
 use tokio::io::{self, AsyncWriteExt as _};
 pub enum SourceType {
@@ -25,7 +26,41 @@ impl TomlSync {
         }
     }
 
-    pub fn load_sources(&self) {
+    pub async fn load_sources(&self){
+        let bytes= self.load_source_bytes().await;
+        let source_tomls = bytes.into_iter().map(|byte|{
+            Manifest::from_slice(&byte).unwrap()
+        }).collect::<Vec<Manifest>>();
+
+    }
+
+    async fn load_source_bytes(&self) ->Vec<Vec<u8>>{
+        let mut source_bytes=Vec::<Vec<u8>>::new();
+        for source in &self.config.sources {
+            match source.source_type{
+                SourceType::Remote => {
+                    if let Ok(uri)= source.path.parse(){
+                      if let Ok(data)=Self::fetch_url(uri).await{
+                          source_bytes.push(data);
+                      }else{
+                          println!("Failed to get data from {:?}",source.path)
+                      }
+                        
+                    }else {
+                        print!("Invalid Url {:?}",&source.path)
+                    }
+                   
+                },
+                SourceType::Local => {
+                    if let Ok(res)= std::fs::read(source.path.clone()){
+                        source_bytes.push(res);
+                    }else{
+                        println!("Failed To read from {:?}",source.path)
+                    }
+                },
+            }
+        }
+        return source_bytes;
 
     }
 
