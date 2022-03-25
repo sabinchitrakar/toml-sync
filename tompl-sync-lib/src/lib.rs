@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, collections::HashMap};
 
 use cargo_toml::Manifest;
 use glob::GlobError;
@@ -22,12 +22,36 @@ pub struct SyncConfig {
 }
 
 pub struct TomlSync {
-    config: SyncConfig,
+    pub config: SyncConfig,
+    pub source_versions:HashMap<String,Vec<String>>,
+    pub target_versions:HashMap<String,TargetInfo>
+}
+
+pub struct TargetInfo {
+    pub path:PathBuf,
+    pub version:String,
 }
 
 impl TomlSync {
+
     pub fn new(config: SyncConfig) -> Self {
-        TomlSync { config }
+        TomlSync { 
+            config ,
+            source_versions:HashMap::new(),
+            target_versions:HashMap::new(),
+        }
+    }
+
+    pub async fn sync(&self){
+        let source_manifest=self.load_source_tomls().await;
+        let target_manifests =self.load_target_tomls().await;
+        for manifest in source_manifest {
+            println!("{:#?}",manifest);
+        }
+
+        for manifest in target_manifests {
+            println!("{:#?}",manifest);
+        }
     }
 
     pub async fn load_source_tomls(&self) -> Vec<Manifest> {
@@ -38,15 +62,15 @@ impl TomlSync {
             .collect::<Vec<Manifest>>();
     }
 
-    pub async fn load_target_tomls(&self) -> Vec<Manifest> {
+    pub async fn load_target_tomls(&self) -> Vec<(Manifest,PathBuf)> {
         let pattern = format!("{}/**/Cargo.toml", &self.config.destination);
         let globs = glob::glob(&pattern).expect("Invalid Glob expression");
         return globs
             .into_iter()
             .filter_map(|p| p.ok())
-            .filter_map(|pb| std::fs::read(pb).ok())
-            .filter_map(|bytes| Manifest::from_slice(&bytes).ok())
-            .collect::<Vec<Manifest>>();
+            .filter_map(|pb| std::fs::read(pb.clone()).map(|bytes|{(bytes,pb)}).ok())
+            .filter_map(|(bytes,pb)| Manifest::from_slice(&bytes).map(|m|{(m,pb)}).ok())
+            .collect::<Vec<(Manifest,PathBuf)>>();
     }
 
     async fn load_source_bytes(&self) -> Vec<Vec<u8>> {
@@ -91,9 +115,21 @@ impl TomlSync {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
+    use crate::{SyncConfig, SourceType, Source, TomlSync};
+
+    #[tokio::test]
+    async fn it_works() {
+       let config = SyncConfig{
+           sources:vec![Source{
+               path:"./../../toml-sync/Cargo.toml".to_owned(),
+               source_type:SourceType::Local
+           }],
+           destination:"./".to_owned(),
+       };
+
+       let toml_sync= TomlSync::new(config);
+       toml_sync.sync().await;
+
+
     }
 }
