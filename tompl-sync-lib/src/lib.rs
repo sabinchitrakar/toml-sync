@@ -1,4 +1,5 @@
 use std::{path::PathBuf, collections::HashMap};
+use hyper_tls::HttpsConnector;
 
 use cargo_toml::Manifest;
 use glob::GlobError;
@@ -43,9 +44,9 @@ impl TomlSync {
     }
 
     pub async fn sync(&self){
-        let source_manifest=self.load_source_tomls().await;
+        let source_manifests=self.load_source_tomls().await;
         let target_manifests =self.load_target_tomls().await;
-        for manifest in source_manifest {
+        for manifest in source_manifests {
             println!("{:#?}",manifest);
         }
 
@@ -58,6 +59,10 @@ impl TomlSync {
         let bytes = self.load_source_bytes().await;
         return bytes
             .into_iter()
+            .map(|b|{
+                println!("{:?}",&b);
+                b
+            })
             .filter_map(|byte| Manifest::from_slice(&byte).ok())
             .collect::<Vec<Manifest>>();
     }
@@ -101,7 +106,9 @@ impl TomlSync {
     }
 
     async fn fetch_url(url: hyper::Uri) -> Result<Vec<u8>, hyper::Error> {
-        let client = Client::new();
+        let https = HttpsConnector::new();
+        let client = Client::builder()
+            .build::<_, hyper::Body>(https);
 
         let mut res = client.get(url).await?;
 
@@ -121,8 +128,8 @@ mod tests {
     async fn it_works() {
        let config = SyncConfig{
            sources:vec![Source{
-               path:"./../../toml-sync/Cargo.toml".to_owned(),
-               source_type:SourceType::Local
+               path:"https://github.com/paritytech/frontier/blob/master/client/rpc/Cargo.toml".to_owned(),
+               source_type:SourceType::Remote
            }],
            destination:"./".to_owned(),
        };
