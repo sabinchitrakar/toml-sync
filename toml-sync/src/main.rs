@@ -1,14 +1,14 @@
 use dialoguer::{Input, Select, console::Term, theme::ColorfulTheme};
-use tompl_sync_lib::{Source, SourceType, TomlSync, SyncConfig};
+use toml_sync_lib::{Source, SourceType, TomlSync, SyncConfig};
 
 #[tokio::main]
 async fn main() {
     let sources : String = Input::new()
-    .with_prompt("Add Sources Comma Separated")
+    .with_prompt("Add Sources Comma Separated :")
     .interact_text().unwrap();
 
     let target=Input::<String>::new()
-    .with_prompt("Directory To Search")
+    .with_prompt("Directory To Search :")
     .interact_text().unwrap();
 
     let sources_parsed= sources.split(",").map(|t|{
@@ -48,7 +48,7 @@ pub fn show_menu(sync:TomlSync){
                 _ =>{}
             }
         },
-        None => println!("User did not select anything")
+        None => println!("No Action Selected")
     }
 
 }

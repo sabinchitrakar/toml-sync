@@ -7,5 +7,5 @@ edition = "2021"
 
 [dependencies]
 dialoguer = "*"
-tompl-sync-lib = { version = "0.1.0", path = "../tompl-sync-lib" }
+toml-sync-lib = { version = "0.1.0", path = "../toml-sync-lib" }
 tokio = { version = "1", features = ["full"] }
