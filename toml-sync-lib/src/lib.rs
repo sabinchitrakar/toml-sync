@@ -85,6 +85,8 @@ impl TomlSync {
                 .map(|t|Self::print_target_info(&t))
                 .collect::<Vec<String>>()
                 .join("\n");
+
+                
             if are_equal{
                 table.add_row(row![FG=>key, target_versions_str, source_version_str]);
             }else{
