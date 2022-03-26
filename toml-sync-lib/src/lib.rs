@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate prettytable;
 use hyper_tls::HttpsConnector;
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::{HashMap, HashSet}, fmt::Display};
 
 use cargo_toml::Manifest;
 use hyper::{body::to_bytes, Client};
@@ -29,8 +29,10 @@ pub struct TomlSync {
 #[derive(Debug, Clone)]
 pub struct TargetInfo {
     pub path: String,
-    pub version: Option<String>,
+    pub version: String,
 }
+
+
 
 impl Display for TargetInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -38,7 +40,7 @@ impl Display for TargetInfo {
     }
 }
 
-pub struct DependencyInfo {}
+
 
 impl TomlSync {
     pub fn new(config: SyncConfig) -> Self {
@@ -68,6 +70,10 @@ impl TomlSync {
         let intersects =self.intersects();
 
         for (key,value) in intersects {
+            let target_set = Self::get_versions(&value.1);
+            let source_set = Self::get_versions(&value.0);
+            let are_equal =target_set.difference(&source_set).count()==0;
+            
             
             let source_version_str = value.0
                 .into_iter()
@@ -79,8 +85,13 @@ impl TomlSync {
                 .map(|t|Self::print_target_info(&t))
                 .collect::<Vec<String>>()
                 .join("\n");
+            if are_equal{
+                table.add_row(row![FG=>key, target_versions_str, source_version_str]);
+            }else{
+                table.add_row(row![FR=>key, target_versions_str, source_version_str]);
+            }
             
-            table.add_row(row![key, target_versions_str, source_version_str]);
+            
         }
         table.printstd();
     }
@@ -105,8 +116,14 @@ impl TomlSync {
         format!(
             "path:{} \nversion: {}",
             target_info.path,
-            target_info.version.clone().unwrap_or("none".to_string())
+            target_info.version.clone()
         )
+    }
+
+    fn get_versions(info:&Vec<TargetInfo>)->HashSet<String>{
+        return info.into_iter()
+        .map(|t|{t.version.to_string()})
+        .collect::<HashSet<String>>();
     }
 
     pub fn extract_dependencies(
@@ -119,7 +136,7 @@ impl TomlSync {
             let version = dependency.1.detail().and_then(|d| d.version.clone());
             println!("dependency:{:?} version:{:?}", dependency_key, version);
             let target_info = TargetInfo {
-                version,
+                version:version.unwrap_or_default(),
                 path: path.clone(),
             };
             map.entry(dependency_key)
