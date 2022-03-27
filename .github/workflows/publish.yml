@@ -16,8 +16,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: Publish Lib
-      run: cd ./toml-sync-lib && cargo publish --token ${{secrets.CARGO_TOKEN}}
     - name: Install Cargo Publish All
       run: cargo install cargo-publish-all
     - name: Build
