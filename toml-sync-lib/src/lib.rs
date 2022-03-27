@@ -23,18 +23,27 @@ pub struct SyncConfig {
 
 pub struct TomlSync {
     pub config: SyncConfig,
-    pub source_versions: HashMap<String, Vec<TargetInfo>>,
-    pub target_versions: HashMap<String, Vec<TargetInfo>>,
+    pub target_manifests:HashMap<String,Manifest>,
+    pub source_manifests:HashMap<String,Manifest>,
+    pub source_versions: HashMap<String, Vec<VersionInfo>>,
+    pub target_versions: HashMap<String, Vec<VersionInfo>>,
 }
 #[derive(Debug, Clone)]
-pub struct TargetInfo {
+pub struct VersionInfo {
     pub path: String,
     pub version: String,
 }
 
+pub struct Match {
+    pub dependency:String,
+    pub targets:Vec<VersionInfo>,
+    pub sources:Vec<VersionInfo>,
+    pub are_equal:bool,
+}
 
 
-impl Display for TargetInfo {
+
+impl Display for VersionInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "path: {} \n versions: {:?}", self.path, self.version)
     }
@@ -48,6 +57,8 @@ impl TomlSync {
             config,
             source_versions: HashMap::new(),
             target_versions: HashMap::new(),
+            source_manifests:HashMap::new(),
+            target_manifests:HashMap::new()
         }
     }
 
@@ -55,11 +66,13 @@ impl TomlSync {
         let source_manifests = self.load_source_tomls().await;
         let target_manifests = self.load_tomls(self.config.destination.clone()).await;
         for manifest in source_manifests {
-            Self::extract_dependencies(&mut (*self).source_versions, manifest.0, manifest.1);
+            Self::extract_dependencies(&mut (*self).source_versions, manifest.0.clone(), &manifest.1);
+            self.source_manifests.insert(manifest.0, manifest.1);
         }
 
         for manifest in target_manifests {
-            Self::extract_dependencies(&mut (*self).target_versions, manifest.0, manifest.1);
+            Self::extract_dependencies(&mut (*self).target_versions, manifest.0.clone(), &manifest.1);
+            self.target_manifests.insert(manifest.0, manifest.1);
         }
     }
 
@@ -69,25 +82,23 @@ impl TomlSync {
 
         let intersects =self.intersects();
 
-        for (key,value) in intersects {
-            let target_set = Self::get_versions(&value.1);
-            let source_set = Self::get_versions(&value.0);
-            let are_equal =target_set.difference(&source_set).count()==0;
+        for intersect in intersects {
+           
+            let key = intersect.dependency.clone();
             
-            
-            let source_version_str = value.0
+            let source_version_str = intersect.sources
                 .into_iter()
-                .map(|t|Self::print_target_info(&t))
+                .map(|t|Self::print_version_info(&t))
                 .collect::<Vec<String>>()
                 .join("\n");
-            let target_versions_str = value.1
+            let target_versions_str = intersect.targets
                 .into_iter()
-                .map(|t|Self::print_target_info(&t))
+                .map(|t|Self::print_version_info(&t))
                 .collect::<Vec<String>>()
                 .join("\n");
 
                 
-            if are_equal{
+            if intersect.are_equal{
                 table.add_row(row![FG=>key, target_versions_str, source_version_str]);
             }else{
                 table.add_row(row![FR=>key, target_versions_str, source_version_str]);
@@ -98,23 +109,30 @@ impl TomlSync {
         table.printstd();
     }
 
-    fn intersects(&self)-> HashMap<String,(Vec<TargetInfo>,Vec<TargetInfo>)> {
-        let mut intersects = HashMap::<String, (Vec<TargetInfo>, Vec<TargetInfo>)>::new();
+    fn intersects(&self)-> Vec<Match> {
+       
+        let mut matches:Vec<Match>=vec![];
         for (key, _value) in &self.target_versions {
             if self.source_versions.contains_key(key) {
-                intersects.insert(
-                    key.to_string(),
-                    (
-                        self.source_versions.get(key).map(|v| v.to_vec()).unwrap(),
-                        self.target_versions.get(key).map(|v| v.to_vec()).unwrap(),
-                    ),
-                );
+                let mut intersect=Match{
+                    dependency:key.clone(),
+                    targets:self.target_versions.get(key).map(|v| v.to_vec()).unwrap(),
+                    sources: self.source_versions.get(key).map(|v| v.to_vec()).unwrap(),
+                    are_equal:false
+                };
+                let target_set = Self::get_versions(&intersect.targets);
+                let source_set = Self::get_versions(&intersect.sources);
+                let are_equal =target_set.difference(&source_set).count()==0;
+                intersect.are_equal=are_equal;
+
+                matches.push(intersect);
+                
             }
         }
-        return intersects;
+        return matches;
     }
 
-    fn print_target_info(target_info: &TargetInfo) -> String {
+    fn print_version_info(target_info: &VersionInfo) -> String {
         format!(
             "path:{} \nversion: {}",
             target_info.path,
@@ -122,26 +140,26 @@ impl TomlSync {
         )
     }
 
-    fn get_versions(info:&Vec<TargetInfo>)->HashSet<String>{
+    fn get_versions(info:&Vec<VersionInfo>)->HashSet<String>{
         return info.into_iter()
         .map(|t|{t.version.to_string()})
         .collect::<HashSet<String>>();
     }
 
     pub fn extract_dependencies(
-        map: &mut HashMap<String, Vec<TargetInfo>>,
+        map: &mut HashMap<String, Vec<VersionInfo>>,
         path: String,
-        manifest: Manifest,
+        manifest: &Manifest,
     ) {
-        for dependency in manifest.dependencies {
+        for dependency in &manifest.dependencies {
             let dependency_key = dependency.0;
             let version = dependency.1.detail().and_then(|d| d.version.clone());
             println!("dependency:{:?} version:{:?}", dependency_key, version);
-            let target_info = TargetInfo {
+            let target_info = VersionInfo {
                 version:version.unwrap_or_default(),
                 path: path.clone(),
             };
-            map.entry(dependency_key)
+            map.entry(dependency_key.clone())
                 .or_insert(vec![])
                 .push(target_info);
         }
